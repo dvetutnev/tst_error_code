@@ -3,7 +3,7 @@ project(tst_error_code CXX)
 
 include(conan.cmake)
 conan_cmake_run(
-    CONANFILE .
+    CONANFILE conanfile.py
     BASIC_SETUP CMAKE_TARGETS
 )
 
