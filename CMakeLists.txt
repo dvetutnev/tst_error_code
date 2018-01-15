@@ -7,14 +7,10 @@ conan_cmake_run(
     BASIC_SETUP CMAKE_TARGETS
 )
 
-add_executable(${PROJECT_NAME} main.cpp)
-
-enable_testing()
-
-add_executable(t t.cpp)
-target_link_libraries(t CONAN_PKG::googletest)
+add_executable(test_adapter_errors test_adapter_errors.cpp adapter_errors)
+target_link_libraries(test_adapter_errors CONAN_PKG::googletest)
 add_test(
-    NAME t
+    NAME test_adapter_errors
     WORKING_DIRECTORY bin
-    COMMAND t
+    COMMAND test_adapter_errors
 )
