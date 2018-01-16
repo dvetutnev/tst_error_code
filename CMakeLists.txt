@@ -7,6 +7,8 @@ conan_cmake_run(
     BASIC_SETUP CMAKE_TARGETS
 )
 
+set(CMAKE_INCLUDE_CURRENT_DIR ON)
+
 add_executable(test_adapter_errors test_adapter_errors.cpp adapter_errors)
 target_link_libraries(test_adapter_errors CONAN_PKG::googletest)
 add_test(
