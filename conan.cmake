@@ -1,3 +1,39 @@
+# The MIT License (MIT)
+
+# Copyright (c) 2018 JFrog
+
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+
+
+# This file comes from: https://github.com/conan-io/cmake-conan. Please refer
+# to this repository for issues and documentation.
+
+# Its purpose is to wrap and launch Conan C/C++ Package Manager when cmake is called.
+# It will take CMake current settings (os, compiler, compiler version, architecture)
+# and translate them to conan settings for installing and retrieving dependencies.
+
+# It is intended to facilitate developers building projects that have conan dependencies,
+# but it is only necessary on the end-user side. It is not necessary to create conan
+# packages, in fact it shouldn't be use for that. Check the project documentation.
+
+
 include(CMakeParseArguments)
 
 function(_get_msvc_ide_version result)
@@ -34,12 +70,17 @@ function(conan_cmake_settings result)
     message(STATUS "Conan ** WARNING** : This detection of settings from cmake is experimental and incomplete. "
                     "Please check 'conan.cmake' and contribute")
 
+    parse_arguments(${ARGV})
+    set(arch ${ARGUMENTS_ARCH})
+
     if(CONAN_CMAKE_MULTI)
         set(_SETTINGS -g cmake_multi)
     else()
         set(_SETTINGS -g cmake)
     endif()
-    if(CMAKE_BUILD_TYPE)
+    if(ARGUMENTS_BUILD_TYPE)
+        set(_SETTINGS ${_SETTINGS} -s build_type=${ARGUMENTS_BUILD_TYPE})
+    elseif(CMAKE_BUILD_TYPE)
         set(_SETTINGS ${_SETTINGS} -s build_type=${CMAKE_BUILD_TYPE})
     else()
         message(FATAL_ERROR "Please specify in command line CMAKE_BUILD_TYPE (-DCMAKE_BUILD_TYPE=Release)")
@@ -71,6 +112,10 @@ function(conan_cmake_settings result)
         set(USING_CXX 0)
     else ()
         message(FATAL_ERROR "Conan: Neither C or C++ was detected as a language for the project. Unabled to detect compiler version.")
+    endif()
+
+    if(arch)
+        set(_SETTINGS ${_SETTINGS} -s arch=${arch})
     endif()
 
     if (${CMAKE_${LANGUAGE}_COMPILER_ID} STREQUAL GNU)
@@ -128,15 +173,17 @@ function(conan_cmake_settings result)
             set(_SETTINGS ${_SETTINGS} -s compiler=${_VISUAL} -s compiler.version=${_VISUAL_VERSION})
         endif()
 
-        if (MSVC_${LANGUAGE}_ARCHITECTURE_ID MATCHES "64")
-            set(_SETTINGS ${_SETTINGS} -s arch=x86_64)
-        elseif (MSVC_${LANGUAGE}_ARCHITECTURE_ID MATCHES "^ARM")
-            message(STATUS "Conan: Using default ARM architecture from MSVC")
-            set(_SETTINGS ${_SETTINGS} -s arch=armv6)
-        elseif (MSVC_${LANGUAGE}_ARCHITECTURE_ID MATCHES "86")
-            set(_SETTINGS ${_SETTINGS} -s arch=x86)
-        else ()
-            message(FATAL_ERROR "Conan: Unknown MSVC architecture [${MSVC_${LANGUAGE}_ARCHITECTURE_ID}]")
+        if(NOT arch)
+            if (MSVC_${LANGUAGE}_ARCHITECTURE_ID MATCHES "64")
+                set(_SETTINGS ${_SETTINGS} -s arch=x86_64)
+            elseif (MSVC_${LANGUAGE}_ARCHITECTURE_ID MATCHES "^ARM")
+                message(STATUS "Conan: Using default ARM architecture from MSVC")
+                set(_SETTINGS ${_SETTINGS} -s arch=armv6)
+            elseif (MSVC_${LANGUAGE}_ARCHITECTURE_ID MATCHES "86")
+                set(_SETTINGS ${_SETTINGS} -s arch=x86)
+            else ()
+                message(FATAL_ERROR "Conan: Unknown MSVC architecture [${MSVC_${LANGUAGE}_ARCHITECTURE_ID}]")
+            endif()
         endif()
 
         conan_cmake_detect_vs_runtime(_vs_runtime)
@@ -208,8 +255,8 @@ endfunction()
 
 
 macro(parse_arguments)
-  set(options BASIC_SETUP CMAKE_TARGETS UPDATE KEEP_RPATHS)
-  set(oneValueArgs CONANFILE DEBUG_PROFILE RELEASE_PROFILE PROFILE)
+  set(options BASIC_SETUP CMAKE_TARGETS UPDATE KEEP_RPATHS NO_OUTPUT_DIRS)
+  set(oneValueArgs CONANFILE DEBUG_PROFILE RELEASE_PROFILE PROFILE ARCH BUILD_TYPE)
   set(multiValueArgs REQUIRES OPTIONS IMPORTS BUILD CONAN_COMMAND)
   cmake_parse_arguments(ARGUMENTS "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN} )
 endmacro()
@@ -339,12 +386,12 @@ macro(conan_cmake_run)
         conan_cmake_setup_conanfile(${ARGV})
         if(CONAN_CMAKE_MULTI)
             foreach(CMAKE_BUILD_TYPE "Release" "Debug")
-                conan_cmake_settings(settings)
+                conan_cmake_settings(settings ${ARGV})
                 conan_cmake_install(SETTINGS ${settings} ${ARGV})
             endforeach()
             set(CMAKE_BUILD_TYPE)
         else()
-            conan_cmake_settings(settings)
+            conan_cmake_settings(settings ${ARGV})
             conan_cmake_install(SETTINGS ${settings} ${ARGV})
         endif()
     endif()
@@ -352,18 +399,15 @@ macro(conan_cmake_run)
     conan_load_buildinfo()
 
     if(ARGUMENTS_BASIC_SETUP)
-      if(ARGUMENTS_CMAKE_TARGETS)
-        if(ARGUMENTS_KEEP_RPATHS)
-            conan_basic_setup(TARGETS KEEP_RPATHS)
-        else()
-            conan_basic_setup(TARGETS)
-        endif()
-      else()
-        if(ARGUMENTS_KEEP_RPATHS)
-            conan_basic_setup(KEEP_RPATHS)
-        else()
-            conan_basic_setup()
-        endif()
-      endif()
+        foreach(_option CMAKE_TARGETS KEEP_RPATHS NO_OUTPUT_DIRS)
+            if(ARGUMENTS_${_option})
+                if(${_option} STREQUAL "CMAKE_TARGETS")
+                    list(APPEND _setup_options "TARGETS")
+                else()
+                    list(APPEND _setup_options ${_option})
+                endif()
+            endif()
+        endforeach()
+        conan_basic_setup(${_setup_options})
     endif()
 endmacro()
